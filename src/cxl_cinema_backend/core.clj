@@ -79,5 +79,5 @@
 
 
 (defn -main [& [port]]
-  (run-server (-> #'chartrootm) {:port (env :port)})
+  (run-server (-> #'chartrootm) {:port (Integer. (env :port))})
   (info "server started. http://127.0.0.1:9899"))
