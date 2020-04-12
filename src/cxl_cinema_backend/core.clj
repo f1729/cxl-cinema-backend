@@ -5,7 +5,8 @@
             [compojure.route :refer :all]
             [clojure.tools.logging :refer [info]]
             [clojure.data.json :refer [write-str read-str]]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [environ.core :refer [env]]))
 
 
 ;; Clients
@@ -77,6 +78,6 @@
 
 
 
-(defn -main [& args]
-  (run-server (-> #'chartrootm) {:port 80})
+(defn -main [& [port]]
+  (run-server (-> #'chartrootm) {:port (env :port)})
   (info "server started. http://127.0.0.1:9899"))
