@@ -8,6 +8,10 @@
                  [org.clojure/tools.logging "1.0.0"]
                  [compojure "1.6.1"]
                  [org.clojure/data.json "1.0.0"]]
+  :min-lein-verion "2.9.3"
+  :plugins [[environ/environ.lein "0.3.1"]]
+  :hooks [environ.leiningen.hooks]
+  :uberjar-name "my-app.jar"
 
   :main cxl-cinema-backend.core
   :repl-options {:init-ns cxl-cinema-backend.core})
