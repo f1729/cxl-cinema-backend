@@ -7,7 +7,8 @@
                  [http-kit "2.3.0"]
                  [org.clojure/tools.logging "1.0.0"]
                  [compojure "1.6.1"]
-                 [org.clojure/data.json "1.0.0"]]
+                 [org.clojure/data.json "1.0.0"]
+                 [environ "1.1.0"]]
   :min-lein-version "2.9.3"
   :plugins [[environ/environ.lein "0.3.1"]]
   :hooks [environ.leiningen.hooks]
