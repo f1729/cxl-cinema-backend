@@ -3,6 +3,7 @@
   (:require [org.httpkit.server :refer :all]
             [compojure.core :refer :all]
             [compojure.route :refer :all]
+            [ring.middleware.params :refer [wrap-params]]
             [clojure.tools.logging :refer [info]]
             [clojure.data.json :refer [write-str read-str]]
             [clojure.string :as str]
@@ -12,6 +13,7 @@
 ;; Clients
 
 (def clients (atom {}))
+(def rooms (atom {}))
 
 
 (defn- now [] (quot (System/currentTimeMillis) 1000))
@@ -40,19 +42,23 @@
   ([data] (merge data {:time (now) :id (next-id)}))
   ([data extras] (merge (prepare-msg data) extras)))
 
+(defn filter-clients [room]
+  (let [ff (get @rooms room)]
+    ff))
+
 (defn mesg-received [msg]
   (let [data (read-str msg :key-fn keyword)]
     (info "mesg received" data)
     (if (:msg data)
-      (doseq [client (keys @clients)]
+      (let [room (:room data)]
+        (filter-clients room)
+        (doseq [client (keys (filter-clients room))]
         ;; send all, client will filter them
-        (if-let [command-argument (re-find (re-pattern "^\\/(\\w*)\\s(.*)") (:msg data))]
-          (send! client (write-str (prepare-msg data {:msg nil :command (nth command-argument 1) :argument (nth command-argument 2)})))
-          (send! client (write-str (prepare-msg data))))))))
+          (if-let [command-argument (re-find (re-pattern "^\\/(\\w*)\\s(.*)") (:msg data))]
+            (send! client (write-str (prepare-msg data {:msg nil :command (nth command-argument 1) :argument (nth command-argument 2)})))
+            (send! client (write-str (prepare-msg data)))))))))
 
 
-
-;;
 ;; (send! client (write-str @all-msgs))
 
 ;;(when (:msg data)
@@ -62,22 +68,26 @@
 
 (defn chat-handler [req]
   (with-channel req channel
-    (info channel "connected")
-    (swap! clients assoc channel true)
+    (swap! rooms assoc (get (:params req) "room") (merge (get @rooms (get (:params req) "room")) {channel true}))
+
+    ;; (swap! clients assoc channel true)
+    ;; (swap! clients assoc "room" (get (:params req) "room"))
+    ;; (info channel "connected" (get (:params req) "room"))
+    (info "===CLIENTS IN ROOMS===" @rooms)
+
     (on-receive channel #'mesg-received)
     (on-close channel (fn [status]
-                        (swap! clients dissoc channel)
+                        (swap! rooms assoc (get (:params req) "room") (dissoc (get @rooms (get (:params req) "room")) channel))
                         (info channel "closed, status" status)))))
 
 
 
 (defroutes chartrootm
-(GET "/ws" []  chat-handler)
-(files "" {:root "static"})
-(not-found "<p>Page not found.</p>" ))
-
+  (GET "/ws" [] chat-handler)
+  (files "" {:root "static"})
+  (not-found "<p>Page not found.</p>"))
 
 
 (defn -main [& [port]]
-  (run-server (-> #'chartrootm) {:port (Integer. (env :port))})
+  (run-server (-> #'chartrootm wrap-params) {:port (Integer. (or (env :port) 9899))})
   (info "server started. http://127.0.0.1:9899"))
