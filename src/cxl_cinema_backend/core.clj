@@ -9,14 +9,20 @@
             [clojure.string :as str]
             [environ.core :refer [env]]))
 
+;; Utils
 
-;; Clients
+(defn- now [] (quot (System/currentTimeMillis) 1000))
+
+(defn get-command
+  [msg]
+  (re-find (re-pattern "^\\/(\\w*)\\s(.*)") msg))
+
+
+;; ATOMS 
 
 (def clients (atom {}))
 (def rooms (atom {}))
 
-
-(defn- now [] (quot (System/currentTimeMillis) 1000))
 
 (let [max-id (atom 0)]
   (defn next-id []
@@ -27,60 +33,65 @@
                          :msg    "this is a live chatroom, have fun",
                          :author "system"}]))
 
-(defn add-message
-  [data extra]
-  (let [data (merge data {:time (now) :id (next-id) } extra)]
-    (dosync
-      (let [all-msgs* (conj @all-msgs data)
-            total     (count all-msgs*)]
-        (if (> total 100)
-          (ref-set all-msgs (vec (drop (- total 100) all-msgs*)))
-          (ref-set all-msgs all-msgs*))))))
-
+;; MESSAGING HANDLER
 
 (defn prepare-msg
   ([data] (merge data {:time (now) :id (next-id)}))
   ([data extras] (merge (prepare-msg data) extras)))
 
-(defn filter-clients [room]
-  (let [ff (get @rooms room)]
-    ff))
+(defn get-client-by-room [room]
+  (let [clients (get @rooms room)] clients))
+
+
+(defn extra-for-command
+  [command-argument]
+  {:msg nil :command (nth command-argument 1) :argument (nth command-argument 2)})
+
+(defn send-message-to-client
+  [client data]
+  (println client data)
+  (if-let [command-argument (get-command (:msg data))]
+    (send! client (write-str (prepare-msg data (extra-for-command command-argument))))
+    (send! client (write-str (prepare-msg data)))))
 
 (defn mesg-received [msg]
   (let [data (read-str msg :key-fn keyword)]
     (info "mesg received" data)
-    (if (:msg data)
-      (let [room (:room data)]
-        (filter-clients room)
-        (doseq [client (keys (filter-clients room))]
-        ;; send all, client will filter them
-          (if-let [command-argument (re-find (re-pattern "^\\/(\\w*)\\s(.*)") (:msg data))]
-            (send! client (write-str (prepare-msg data {:msg nil :command (nth command-argument 1) :argument (nth command-argument 2)})))
-            (send! client (write-str (prepare-msg data)))))))))
+    (when-let [room (:room data)]
+      (doseq [client (keys (get-client-by-room room))] 
+        (send-message-to-client client data)))))
 
 
-;; (send! client (write-str @all-msgs))
+;; CLIENT LOGIN HANDLER
 
-;;(when (:msg data)
-;;  (if-let [command-argument (re-find (re-pattern "^\\/(\\w*)\\s(.*)") (:msg data))]
-;;    (add-message data {:msg nil :command (nth command-argument 1) :argument (nth command-argument 2)})
-;;    (add-message data {})))
+(defn get-room-header
+  [req]
+  (get (:params req) "room"))
+
+(defn get-room
+  [room]
+  (get @rooms room))
+
+(defn add-client-room
+  [client room]
+  (swap! rooms assoc room (merge (get-room room) {client true})))
+
+(defn delete-client-room
+  [client room]
+  (swap! rooms assoc room (dissoc (get-room room) client)))
 
 (defn chat-handler [req]
-  (with-channel req channel
-    (swap! rooms assoc (get (:params req) "room") (merge (get @rooms (get (:params req) "room")) {channel true}))
-
-    ;; (swap! clients assoc channel true)
-    ;; (swap! clients assoc "room" (get (:params req) "room"))
-    ;; (info channel "connected" (get (:params req) "room"))
-    (info "===CLIENTS IN ROOMS===" @rooms)
-
-    (on-receive channel #'mesg-received)
-    (on-close channel (fn [status]
-                        (swap! rooms assoc (get (:params req) "room") (dissoc (get @rooms (get (:params req) "room")) channel))
-                        (info channel "closed, status" status)))))
+  (let [room (get-room-header req)]
+    (with-channel req channel
+      (info "::: CLIENT IN ROOM :::" channel)
+      (add-client-room channel room)
+      (on-receive channel #'mesg-received)
+      (on-close channel (fn [status]
+                          (delete-client-room channel room)
+                          (info channel "closed, status" status))))))
 
 
+;; ROUTES
 
 (defroutes chartrootm
   (GET "/ws" [] chat-handler)
