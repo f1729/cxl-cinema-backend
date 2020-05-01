@@ -1,6 +1,6 @@
 # cxl-cinema-backend
 
-A Clojure library designed to ... well, that part is up to you.
+Chat with websocket, rooms included. 
 
 ## Usage
 
